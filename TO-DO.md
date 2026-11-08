@@ -1,0 +1,19 @@
+## TO-DOs:
+- [] Add specs & reqs & docs
+    - [] Add placeholders
+    - [] Add proper docs
+- [] Define project architecture
+    - [] Create package structure
+    - [] Create interfaces & base contracts
+    - [] Document architecture
+        - [] Add diagrams (Mermaid diagrams in [`reqs.md`](reqs/reqs.md))
+        - [] Keep architecture up-to-date
+- [] Implement code
+    - [] Initial ramp-up
+        - [] Define interfaces
+        - [] Implement base app logic
+    - [] Prepare demo
+        - [] Implement working prototype
+    - TBA
+- [] Implement tests
+    - TBA
