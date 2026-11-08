@@ -1,6 +1,6 @@
 ## TO-DOs:
 - [] Add specs & reqs & docs
-    - [] Add placeholders
+    - [x] Add placeholders
     - [] Add proper docs
 - [] Define project architecture
     - [] Create package structure
