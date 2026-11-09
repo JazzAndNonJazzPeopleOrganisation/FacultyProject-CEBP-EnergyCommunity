@@ -1,0 +1,11 @@
+EnergyCommunity.core.api
+
+Scope & Responsibilities:
+- Defines the public API contracts and service interfaces exposed by the backend core.
+- Serves as the primary public entry point and communication boundary for all client applications (Mobile App, Admin App) and external consumers.
+- Co-owned across backend capabilities (entity/device management, telemetry metrics, and action proposals).
+
+Component Boundaries & Visibility:
+- VISIBILITY: PUBLIC.
+- Boundary Rule: All external callers must interact with the backend strictly through these contracts.
+- Internal backend implementation details (database storage, internal calculation engines) are hidden behind this boundary.

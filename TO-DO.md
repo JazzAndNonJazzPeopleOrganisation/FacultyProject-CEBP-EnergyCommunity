@@ -3,7 +3,10 @@
     - [x] Add placeholders
     - [] Add proper docs
 - [] Define project architecture
-    - [] Create package structure
+    - [x] Create package structure
+    - [] Review package structure
+    - [] Improve package structure (if needed)
+    - [] Decide on adminApp existence
     - [] Create interfaces & base contracts
     - [] Document architecture
         - [] Add diagrams (Mermaid diagrams in [`reqs.md`](reqs/reqs.md))

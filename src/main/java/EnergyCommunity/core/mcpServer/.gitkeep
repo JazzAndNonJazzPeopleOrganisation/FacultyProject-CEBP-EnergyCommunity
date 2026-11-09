@@ -1,0 +1,11 @@
+EnergyCommunity.core.mcpServer
+
+Scope & Responsibilities:
+- Exposes Model Context Protocol (MCP) server endpoints and tool definitions for AI agent interaction.
+- Provides standard tool capabilities: reading system state, inspecting forecasts, and proposing resource allocation schedules.
+- Hosts the scheduled agentic workflow that evaluates system forecasts and formulates optimization recommendations.
+
+Component Boundaries & Visibility:
+- VISIBILITY: PROTOCOL BOUNDARY.
+- Boundary Rule: Queries system state via service interfaces/events and submits suggested action plans for user/administrator approval.
+- Agent reasoning, LLM orchestration, and MCP protocol transport mechanics remain internal to this component.
