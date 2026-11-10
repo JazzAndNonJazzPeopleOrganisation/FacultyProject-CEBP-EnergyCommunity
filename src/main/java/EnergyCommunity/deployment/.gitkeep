@@ -1,0 +1,11 @@
+EnergyCommunity.deployment
+
+Scope & Responsibilities:
+- Coordinates component lifecycle, startup orchestration, and runtime health monitoring across services.
+- Manages dependency initialization order (ensuring data stores and messaging channels are verified healthy before dependent services start).
+- Handles graceful shutdown and resource cleanup on system termination.
+
+Component Boundaries & Visibility:
+- VISIBILITY: ORCHESTRATION / INFRASTRUCTURE LAYER.
+- Boundary Rule: Drives system bootstrapping via lifecycle and management interfaces provided by core components, without coupling directly to private component internals.
+- Containerization rules remain separate from application-level lifecycle orchestration.

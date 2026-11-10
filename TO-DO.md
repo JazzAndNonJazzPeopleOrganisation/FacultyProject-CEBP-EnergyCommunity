@@ -1,0 +1,22 @@
+## TO-DOs:
+- [] Add specs & reqs & docs
+    - [x] Add placeholders
+    - [] Add proper docs
+- [] Define project architecture
+    - [x] Create package structure
+    - [] Review package structure
+    - [] Improve package structure (if needed)
+    - [] Decide on adminApp existence
+    - [] Create interfaces & base contracts
+    - [] Document architecture
+        - [] Add diagrams (Mermaid diagrams in [`reqs.md`](reqs/reqs.md))
+        - [] Keep architecture up-to-date
+- [] Implement code
+    - [] Initial ramp-up
+        - [] Define interfaces
+        - [] Implement base app logic
+    - [] Prepare demo
+        - [] Implement working prototype
+    - TBA
+- [] Implement tests
+    - TBA

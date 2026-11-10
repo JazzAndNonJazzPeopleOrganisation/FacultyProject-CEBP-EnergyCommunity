@@ -1,0 +1,9 @@
+EnergyCommunity.user.mobileApp
+
+Scope & Responsibilities:
+- Encapsulates mobile client actor business logic and device-level integrations for community members.
+- Manages user-side workflows: live consumption tracking, geofencing triggers (e.g. proximity-based energy reservation for EV charging), and review of AI-generated optimization proposals.
+
+Component Boundaries & Visibility:
+- VISIBILITY: CLIENT APPLICATION.
+- Boundary Rule: Acts as an external consumer of the backend, communicating strictly through contracts exposed by core.api. Captures user decisions (Accept/Reject) and forwards them via public API endpoints.
