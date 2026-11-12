@@ -4,15 +4,17 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 @Entity
 @Table(name = "houses")
 @Schema(description = "Entity representing a smart house and its hardware configuration")
-public class HouseDTO {
+public class House {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -37,6 +39,7 @@ public class HouseDTO {
     @Schema(description = "Geographic longitude of the house", example = "21.2087")
     private Double longitude;
 
+    @NotNull(message = "Current consumption is required")
     @PositiveOrZero(message = "Current consumption must be zero or positive")
     @Column(nullable = false)
     @Schema(description = "Current baseline power consumption in kW", example = "1.8")
@@ -46,22 +49,22 @@ public class HouseDTO {
     @JoinColumn(name = "user_id")
     @JsonIgnoreProperties("houses")
     @Schema(description = "Owner of the house")
-    private UserDTO user;
+    private User user;
 
     @OneToMany(mappedBy = "house", cascade = CascadeType.ALL, orphanRemoval = true)
     @JsonIgnoreProperties("house")
     @Schema(description = "Batteries installed in the house")
-    private List<BatteryDTO> batteries = new ArrayList<>();
+    private List<Battery> batteries = new ArrayList<>();
 
     @OneToMany(mappedBy = "house", cascade = CascadeType.ALL, orphanRemoval = true)
     @JsonIgnoreProperties("house")
     @Schema(description = "Solar panels installed in the house")
-    private List<SolarPanelDTO> solarPanels = new ArrayList<>();
+    private List<SolarPanel> solarPanels = new ArrayList<>();
 
-    public HouseDTO() {
+    public House() {
     }
 
-    public HouseDTO(Long id, String name, String address, Double latitude, Double longitude, Double currentConsumptionKw) {
+    public House(Long id, String name, String address, Double latitude, Double longitude, Double currentConsumptionKw) {
         this.id = id;
         this.name = name;
         this.address = address;
@@ -70,24 +73,44 @@ public class HouseDTO {
         this.currentConsumptionKw = currentConsumptionKw != null ? currentConsumptionKw : 0.0;
     }
 
-    public void addBattery(BatteryDTO battery) {
-        batteries.add(battery);
+    public void addBattery(Battery battery) {
+        if (battery == null) {
+            return;
+        }
+        if (!this.batteries.contains(battery)) {
+            this.batteries.add(battery);
+        }
         battery.setHouse(this);
     }
 
-    public void removeBattery(BatteryDTO battery) {
-        batteries.remove(battery);
-        battery.setHouse(null);
+    public void removeBattery(Battery battery) {
+        if (battery == null) {
+            return;
+        }
+        this.batteries.remove(battery);
+        if (battery.getHouse() == this) {
+            battery.setHouse(null);
+        }
     }
 
-    public void addSolarPanel(SolarPanelDTO solarPanel) {
-        solarPanels.add(solarPanel);
+    public void addSolarPanel(SolarPanel solarPanel) {
+        if (solarPanel == null) {
+            return;
+        }
+        if (!this.solarPanels.contains(solarPanel)) {
+            this.solarPanels.add(solarPanel);
+        }
         solarPanel.setHouse(this);
     }
 
-    public void removeSolarPanel(SolarPanelDTO solarPanel) {
-        solarPanels.remove(solarPanel);
-        solarPanel.setHouse(null);
+    public void removeSolarPanel(SolarPanel solarPanel) {
+        if (solarPanel == null) {
+            return;
+        }
+        this.solarPanels.remove(solarPanel);
+        if (solarPanel.getHouse() == this) {
+            solarPanel.setHouse(null);
+        }
     }
 
     public Long getId() {
@@ -135,40 +158,56 @@ public class HouseDTO {
     }
 
     public void setCurrentConsumptionKw(Double currentConsumptionKw) {
-        this.currentConsumptionKw = currentConsumptionKw;
+        this.currentConsumptionKw = currentConsumptionKw != null ? currentConsumptionKw : 0.0;
     }
 
-    public UserDTO getUser() {
+    public User getUser() {
         return user;
     }
 
-    public void setUser(UserDTO user) {
+    public void setUser(User user) {
         this.user = user;
     }
 
-    public List<BatteryDTO> getBatteries() {
+    public List<Battery> getBatteries() {
         return batteries;
     }
 
-    public void setBatteries(List<BatteryDTO> batteries) {
-        this.batteries = batteries;
-        if (this.batteries != null) {
-            for (BatteryDTO battery : this.batteries) {
-                battery.setHouse(this);
+    public void setBatteries(List<Battery> batteries) {
+        for (Battery existing : new ArrayList<>(this.batteries)) {
+            removeBattery(existing);
+        }
+        if (batteries != null) {
+            for (Battery battery : batteries) {
+                addBattery(battery);
             }
         }
     }
 
-    public List<SolarPanelDTO> getSolarPanels() {
+    public List<SolarPanel> getSolarPanels() {
         return solarPanels;
     }
 
-    public void setSolarPanels(List<SolarPanelDTO> solarPanels) {
-        this.solarPanels = solarPanels;
-        if (this.solarPanels != null) {
-            for (SolarPanelDTO panel : this.solarPanels) {
-                panel.setHouse(this);
+    public void setSolarPanels(List<SolarPanel> solarPanels) {
+        for (SolarPanel existing : new ArrayList<>(this.solarPanels)) {
+            removeSolarPanel(existing);
+        }
+        if (solarPanels != null) {
+            for (SolarPanel panel : solarPanels) {
+                addSolarPanel(panel);
             }
         }
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof House other)) return false;
+        return id != null && Objects.equals(id, other.id);
+    }
+
+    @Override
+    public int hashCode() {
+        return getClass().hashCode();
     }
 }

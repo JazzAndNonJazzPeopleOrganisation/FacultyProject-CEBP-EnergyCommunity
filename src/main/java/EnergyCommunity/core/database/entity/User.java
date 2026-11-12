@@ -8,11 +8,12 @@ import jakarta.validation.constraints.NotBlank;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 @Entity
 @Table(name = "users")
 @Schema(description = "Entity representing a registered user in the Energy Community")
-public class UserDTO {
+public class User {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -37,26 +38,36 @@ public class UserDTO {
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
     @JsonIgnoreProperties("user")
     @Schema(description = "List of houses owned by the user")
-    private List<HouseDTO> houses = new ArrayList<>();
+    private List<House> houses = new ArrayList<>();
 
-    public UserDTO() {
+    public User() {
     }
 
-    public UserDTO(Long id, String name, String email, String phone) {
+    public User(Long id, String name, String email, String phone) {
         this.id = id;
         this.name = name;
         this.email = email;
         this.phone = phone;
     }
 
-    public void addHouse(HouseDTO house) {
-        houses.add(house);
+    public void addHouse(House house) {
+        if (house == null) {
+            return;
+        }
+        if (!this.houses.contains(house)) {
+            this.houses.add(house);
+        }
         house.setUser(this);
     }
 
-    public void removeHouse(HouseDTO house) {
-        houses.remove(house);
-        house.setUser(null);
+    public void removeHouse(House house) {
+        if (house == null) {
+            return;
+        }
+        this.houses.remove(house);
+        if (house.getUser() == this) {
+            house.setUser(null);
+        }
     }
 
     public Long getId() {
@@ -91,16 +102,30 @@ public class UserDTO {
         this.phone = phone;
     }
 
-    public List<HouseDTO> getHouses() {
+    public List<House> getHouses() {
         return houses;
     }
 
-    public void setHouses(List<HouseDTO> houses) {
-        this.houses = houses;
-        if (this.houses != null) {
-            for (HouseDTO house : this.houses) {
-                house.setUser(this);
+    public void setHouses(List<House> houses) {
+        for (House existing : new ArrayList<>(this.houses)) {
+            removeHouse(existing);
+        }
+        if (houses != null) {
+            for (House house : houses) {
+                addHouse(house);
             }
         }
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof User other)) return false;
+        return id != null && Objects.equals(id, other.id);
+    }
+
+    @Override
+    public int hashCode() {
+        return getClass().hashCode();
     }
 }
