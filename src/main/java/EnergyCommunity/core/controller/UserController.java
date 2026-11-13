@@ -2,13 +2,15 @@ package EnergyCommunity.core.controller;
 
 import EnergyCommunity.core.model.User;
 import EnergyCommunity.core.service.UserService;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
 @RestController
+@RequestMapping("/api/v1/users")
 public class UserController implements UserAPI {
 
     private final UserService userService;
@@ -18,31 +20,36 @@ public class UserController implements UserAPI {
     }
 
     @Override
+    @GetMapping
     public ResponseEntity<List<User>> getAllUsers() {
         List<User> users = userService.findAllUsers();
         return ResponseEntity.ok(users);
     }
 
     @Override
-    public ResponseEntity<User> getUserById(Long id) {
+    @GetMapping("/{id}")
+    public ResponseEntity<User> getUserById(@PathVariable Long id) {
         User user = userService.findUserById(id);
         return ResponseEntity.ok(user);
     }
 
     @Override
-    public ResponseEntity<User> createUser(User user) {
+    @PostMapping
+    public ResponseEntity<User> createUser(@Valid @RequestBody User user) {
         User createdUser = userService.saveUser(user);
         return ResponseEntity.status(HttpStatus.CREATED).body(createdUser);
     }
 
     @Override
-    public ResponseEntity<User> updateUser(Long id, User user) {
+    @PutMapping("/{id}")
+    public ResponseEntity<User> updateUser(@PathVariable Long id, @RequestBody User user) {
         User updatedUser = userService.updateUser(id, user);
         return ResponseEntity.ok(updatedUser);
     }
 
     @Override
-    public ResponseEntity<Void> deleteUser(Long id) {
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteUser(@PathVariable Long id) {
         userService.deleteUser(id);
         return ResponseEntity.noContent().build();
     }
