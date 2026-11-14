@@ -8,13 +8,15 @@ import EnergyCommunity.core.telemetry.service.ForecastService;
 import EnergyCommunity.core.telemetry.service.HouseStatusService;
 import EnergyCommunity.core.telemetry.service.TelemetryAggregationService;
 import EnergyCommunity.core.telemetry.simulation.TelemetrySimulationService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.Optional;
 
-/**
- * Pure Java implementation of {@link TelemetryAPI} without any Spring Boot dependency.
- */
+@RestController
+@RequestMapping("/api/v1/telemetry")
 public class DefaultTelemetryAPI implements TelemetryAPI {
 
     private final HouseStatusService houseStatusService;
@@ -22,11 +24,12 @@ public class DefaultTelemetryAPI implements TelemetryAPI {
     private final TelemetryAggregationService aggregationService;
     private final TelemetrySimulationService simulationService;
 
+    @Autowired
     public DefaultTelemetryAPI(
-            HouseStatusService houseStatusService,
-            ForecastService forecastService,
-            TelemetryAggregationService aggregationService,
-            TelemetrySimulationService simulationService) {
+            @Autowired(required = false) HouseStatusService houseStatusService,
+            @Autowired(required = false) ForecastService forecastService,
+            @Autowired(required = false) TelemetryAggregationService aggregationService,
+            @Autowired(required = false) TelemetrySimulationService simulationService) {
         this.houseStatusService = houseStatusService;
         this.forecastService = forecastService;
         this.aggregationService = aggregationService;
@@ -34,57 +37,78 @@ public class DefaultTelemetryAPI implements TelemetryAPI {
     }
 
     @Override
-    public Optional<HouseStatusResponse> getHouseStatus(Long houseId) {
-        return houseStatusService != null ? houseStatusService.getHouseStatus(houseId) : Optional.empty();
+    public ResponseEntity<HouseStatusResponse> getHouseStatus(Long houseId) {
+        if (houseStatusService != null) {
+            return houseStatusService.getHouseStatus(houseId)
+                    .map(ResponseEntity::ok)
+                    .orElseGet(() -> ResponseEntity.notFound().build());
+        }
+        return ResponseEntity.notFound().build();
     }
 
     @Override
-    public Optional<HouseStatusResponse> getHouseStatusByUserId(Long userId) {
-        return houseStatusService != null ? houseStatusService.getHouseStatusByUserId(userId) : Optional.empty();
+    public ResponseEntity<HouseStatusResponse> getHouseStatusByUserId(Long userId) {
+        if (houseStatusService != null) {
+            return houseStatusService.getHouseStatusByUserId(userId)
+                    .map(ResponseEntity::ok)
+                    .orElseGet(() -> ResponseEntity.notFound().build());
+        }
+        return ResponseEntity.notFound().build();
     }
 
     @Override
-    public List<HouseStatusResponse> getAllHouseStatuses() {
-        return houseStatusService != null ? houseStatusService.getAllHouseStatuses() : List.of();
+    public ResponseEntity<List<HouseStatusResponse>> getAllHouseStatuses() {
+        List<HouseStatusResponse> list = houseStatusService != null ? houseStatusService.getAllHouseStatuses() : List.of();
+        return ResponseEntity.ok(list);
     }
 
     @Override
-    public ForecastResponse getForecast(Double latitude, Double longitude) {
-        return forecastService != null ? forecastService.get24HourForecast(latitude, longitude) : null;
+    public ResponseEntity<ForecastResponse> getForecast(Double latitude, Double longitude) {
+        if (latitude == null || longitude == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        ForecastResponse forecast = forecastService != null ? forecastService.get24HourForecast(latitude, longitude) : null;
+        return forecast != null ? ResponseEntity.ok(forecast) : ResponseEntity.notFound().build();
     }
 
     @Override
-    public Optional<AggregatedMetricsResponse> getHouseMetrics(Long houseId) {
-        return aggregationService != null ? Optional.ofNullable(aggregationService.getDailyMetrics(houseId)) : Optional.empty();
+    public ResponseEntity<AggregatedMetricsResponse> getHouseMetrics(Long houseId) {
+        if (aggregationService != null) {
+            AggregatedMetricsResponse metrics = aggregationService.getDailyMetrics(houseId);
+            return metrics != null ? ResponseEntity.ok(metrics) : ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.notFound().build();
     }
 
     @Override
-    public void updateEvProximity(Long houseId, boolean approaching) {
+    public ResponseEntity<Void> updateEvProximity(Long houseId, boolean approaching) {
         if (houseStatusService != null) {
             houseStatusService.setEvProximityStatus(houseId, approaching);
+            return ResponseEntity.ok().build();
         }
+        return ResponseEntity.notFound().build();
     }
 
     @Override
-    public SimulationStatusResponse getSimulationStatus() {
-        return simulationService != null ? simulationService.getStatus() : null;
+    public ResponseEntity<SimulationStatusResponse> getSimulationStatus() {
+        return simulationService != null ? ResponseEntity.ok(simulationService.getStatus()) : ResponseEntity.notFound().build();
     }
 
     @Override
-    public SimulationStatusResponse startSimulation(int intervalSeconds) {
+    public ResponseEntity<SimulationStatusResponse> startSimulation(int intervalSeconds) {
         if (simulationService != null) {
             simulationService.startSimulation(intervalSeconds);
-            return simulationService.getStatus();
+            return ResponseEntity.ok(simulationService.getStatus());
         }
-        return null;
+        return ResponseEntity.notFound().build();
     }
 
     @Override
-    public SimulationStatusResponse stopSimulation() {
+    public ResponseEntity<SimulationStatusResponse> stopSimulation() {
         if (simulationService != null) {
             simulationService.stopSimulation();
-            return simulationService.getStatus();
+            return ResponseEntity.ok(simulationService.getStatus());
         }
-        return null;
+        return ResponseEntity.notFound().build();
     }
 }
