@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "EnergyCommunity",
+    "slug": "energy-community-mobile-client",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.energy.mobileclient"
+    },
+    "android": {
+      "package": "com.energy.mobileclient"
+    }
+  }
+}
