@@ -1,6 +1,6 @@
 package EnergyCommunity.core.mcpServer.port.impl;
 
-import EnergyCommunity.core.mcpServer.port.ProposalSubmissionPort;
+import EnergyCommunity.core.mcpServer.port.ProposalStoreContract;
 import EnergyCommunity.core.mcpServer.tools.model.BatteryActionPlan;
 import EnergyCommunity.core.mcpServer.tools.model.BatteryProposal;
 import EnergyCommunity.core.mcpServer.tools.model.ProposalStatus;
@@ -15,9 +15,9 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Thread-safe in-memory store for AI-generated {@link BatteryProposal} records.
+ * Thread-safe in-memory implementation of {@link ProposalStoreContract} for AI-generated {@link BatteryProposal} records.
  */
-public class InMemoryProposalStore implements ProposalSubmissionPort {
+public class InMemoryProposalStore implements ProposalStoreContract {
 
     private final Map<String, BatteryProposal> proposals = new ConcurrentHashMap<>();
 
@@ -34,12 +34,14 @@ public class InMemoryProposalStore implements ProposalSubmissionPort {
         return created;
     }
 
+    @Override
     public List<BatteryProposal> getAllProposals() {
         return proposals.values().stream()
                 .sorted(Comparator.comparing(BatteryProposal::createdAt).reversed())
                 .toList();
     }
 
+    @Override
     public List<BatteryProposal> getProposalsByUser(String userId) {
         return proposals.values().stream()
                 .filter(p -> userId != null && userId.equals(p.userId()))
@@ -47,22 +49,30 @@ public class InMemoryProposalStore implements ProposalSubmissionPort {
                 .toList();
     }
 
+    @Override
     public Optional<BatteryProposal> findById(String proposalId) {
         return proposalId == null ? Optional.empty() : Optional.ofNullable(proposals.get(proposalId));
     }
 
+    @Override
     public BatteryProposal acceptProposal(String proposalId) {
-        return transitionStatus(proposalId, ProposalStatus.ACCEPTED);
+        return transitionFromPending(proposalId, ProposalStatus.ACCEPTED);
     }
 
+    @Override
     public BatteryProposal rejectProposal(String proposalId) {
-        return transitionStatus(proposalId, ProposalStatus.REJECTED);
+        return transitionFromPending(proposalId, ProposalStatus.REJECTED);
     }
 
-    private BatteryProposal transitionStatus(String proposalId, ProposalStatus nextStatus) {
+    private BatteryProposal transitionFromPending(String proposalId, ProposalStatus nextStatus) {
         return proposals.compute(proposalId, (id, existing) -> {
             if (existing == null) {
                 throw new NoSuchElementException("Proposal not found: " + proposalId);
+            }
+            if (existing.status() != ProposalStatus.PENDING) {
+                throw new IllegalStateException(
+                        "Cannot transition proposal " + proposalId + " from " + existing.status() + " to " + nextStatus
+                );
             }
             return new BatteryProposal(
                     existing.id(), existing.userId(), existing.houseId(), existing.description(),

@@ -2,6 +2,7 @@ package EnergyCommunity.core.mcpServer;
 
 import EnergyCommunity.core.mcpServer.port.ForecastQueryPort;
 import EnergyCommunity.core.mcpServer.port.HouseStatusQueryPort;
+import EnergyCommunity.core.mcpServer.port.ProposalStoreContract;
 import EnergyCommunity.core.mcpServer.port.impl.InMemoryProposalStore;
 import EnergyCommunity.core.mcpServer.protocol.McpToolResult;
 import EnergyCommunity.core.mcpServer.protocol.impl.DefaultMcpToolRegistry;
@@ -27,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class McpToolsUnitTest {
 
-    private InMemoryProposalStore proposalStore;
+    private ProposalStoreContract proposalStore;
     private GetHouseStatusTool getHouseStatusTool;
     private GetForecastsTool getForecastsTool;
     private ProposeBatteryScheduleTool proposeBatteryScheduleTool;
@@ -112,8 +113,8 @@ class McpToolsUnitTest {
     }
 
     @Test
-    void proposeBatteryScheduleCreatesPendingProposalAndTransitionsStatus() {
-        McpToolResult result = proposeBatteryScheduleTool.execute(Map.of(
+    void proposeBatteryScheduleCreatesPendingProposalAndEnforcesValidStatusTransitions() {
+        Map<String, Object> planArgs = Map.of(
                 "user_id", "1",
                 "action_plan", Map.of(
                         "house_id", "101",
@@ -124,17 +125,25 @@ class McpToolsUnitTest {
                         "description", "Sell 40% of battery at 19:00 UTC",
                         "reasoning", "Evening tariff peak reaches 0.46 EUR/kWh"
                 )
-        ));
+        );
 
-        assertFalse(result.isError());
-        ProposalSubmissionResult submission = (ProposalSubmissionResult) result.structuredPayload();
-        assertTrue(submission.acceptedBySystem());
-        assertEquals(ProposalStatus.PENDING, submission.proposal().status());
-        assertEquals(BatteryActionType.SELL_TO_GRID, submission.proposal().actionType());
+        McpToolResult first = proposeBatteryScheduleTool.execute(planArgs);
+        assertFalse(first.isError());
+        ProposalSubmissionResult sub1 = (ProposalSubmissionResult) first.structuredPayload();
+        assertTrue(sub1.acceptedBySystem());
+        assertEquals(ProposalStatus.PENDING, sub1.proposal().status());
+        assertEquals(BatteryActionType.SELL_TO_GRID, sub1.proposal().actionType());
 
-        String id = submission.proposal().id();
-        assertEquals(ProposalStatus.ACCEPTED, proposalStore.acceptProposal(id).status());
-        assertEquals(ProposalStatus.REJECTED, proposalStore.rejectProposal(id).status());
+        String id1 = sub1.proposal().id();
+        assertEquals(ProposalStatus.ACCEPTED, proposalStore.acceptProposal(id1).status());
+        assertThrows(IllegalStateException.class, () -> proposalStore.rejectProposal(id1));
+        assertThrows(IllegalStateException.class, () -> proposalStore.acceptProposal(id1));
+
+        McpToolResult second = proposeBatteryScheduleTool.execute(planArgs);
+        String id2 = ((ProposalSubmissionResult) second.structuredPayload()).proposal().id();
+        assertEquals(ProposalStatus.REJECTED, proposalStore.rejectProposal(id2).status());
+        assertThrows(IllegalStateException.class, () -> proposalStore.acceptProposal(id2));
+        assertEquals(2, proposalStore.getProposalsByUser("1").size());
     }
 
     @Test
