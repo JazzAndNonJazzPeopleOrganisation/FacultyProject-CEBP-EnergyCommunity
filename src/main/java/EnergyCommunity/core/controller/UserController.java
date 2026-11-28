@@ -41,6 +41,15 @@ public class UserController implements UserAPI {
     }
 
     @Override
+    @PostMapping("/login")
+    public ResponseEntity<User> loginUser(
+            @RequestParam String email,
+            @RequestParam String password) {
+        User authenticated = userService.authenticateUser(email, password);
+        return ResponseEntity.ok(authenticated);
+    }
+
+    @Override
     @PutMapping("/{id}")
     public ResponseEntity<User> updateUser(@PathVariable Long id, @RequestBody User user) {
         User updatedUser = userService.updateUser(id, user);

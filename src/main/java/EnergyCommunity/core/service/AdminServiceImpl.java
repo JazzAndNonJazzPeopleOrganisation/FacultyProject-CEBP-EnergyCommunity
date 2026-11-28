@@ -1,8 +1,11 @@
 package EnergyCommunity.core.service;
 
 import EnergyCommunity.core.model.Admin;
+import EnergyCommunity.core.model.AdminAuthResponse;
 import EnergyCommunity.core.model.User;
 import EnergyCommunity.core.repository.AdminRepository;
+import EnergyCommunity.core.security.AdminSessionService;
+import EnergyCommunity.core.security.PasswordHasher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,10 +19,14 @@ public class AdminServiceImpl implements AdminService {
 
     private final AdminRepository adminRepository;
     private final UserService userService;
+    private final AdminSessionService adminSessionService;
 
-    public AdminServiceImpl(AdminRepository adminRepository, UserService userService) {
+    public AdminServiceImpl(AdminRepository adminRepository,
+                            UserService userService,
+                            AdminSessionService adminSessionService) {
         this.adminRepository = adminRepository;
         this.userService = userService;
+        this.adminSessionService = adminSessionService;
     }
 
     @Override
@@ -46,24 +53,40 @@ public class AdminServiceImpl implements AdminService {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, "An admin with email " + admin.getEmail() + " already exists");
         }
+        if (admin.getPassword() == null || admin.getPassword().isBlank()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Admin password is required");
+        }
+        admin.setPassword(PasswordHasher.hash(admin.getPassword()));
         return adminRepository.save(admin);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public Admin authenticateAdmin(String usernameOrEmail, String password) {
+    public AdminAuthResponse authenticateAdmin(String usernameOrEmail, String password) {
         if (usernameOrEmail == null || usernameOrEmail.isBlank() || password == null || password.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Username/email and password are required");
         }
-        Admin admin = adminRepository.findByUsername(usernameOrEmail)
-                .or(() -> adminRepository.findByEmail(usernameOrEmail))
+        String identifier = usernameOrEmail.trim();
+        Admin admin = adminRepository.findByUsername(identifier)
+                .or(() -> adminRepository.findByEmail(identifier))
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.UNAUTHORIZED, "Invalid admin credentials"));
 
-        if (!password.equals(admin.getPassword())) {
+        if (!PasswordHasher.verify(password, admin.getPassword())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid admin credentials");
         }
-        return admin;
+        return adminSessionService.createSession(admin);
+    }
+
+    @Override
+    public void logoutAdmin(String adminToken) {
+        adminSessionService.invalidateToken(adminToken);
+    }
+
+    @Override
+    public void requireValidSession(String adminToken) {
+        adminSessionService.validateToken(adminToken);
     }
 
     @Override

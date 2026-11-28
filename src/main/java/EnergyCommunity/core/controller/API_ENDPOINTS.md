@@ -6,6 +6,23 @@
 
 ---
 
+## Security & Authentication Overview
+
+1. **Password Hashing (`PBKDF2WithHmacSHA256`):**
+   - Both `User` and `Admin` passwords are salted (128-bit `SecureRandom` salt) and hashed with `PBKDF2WithHmacSHA256` (65,536 iterations) via [`PasswordHasher`](../security/PasswordHasher.java) before being persisted.
+   - Passwords are marked `@JsonProperty(access = WRITE_ONLY)` and are never returned in JSON responses.
+2. **Default Bootstrap Administrator (Seeded automatically on startup):**
+   - Configured in [`application.properties`](../../../../resources/application.properties) and created automatically by [`AdminDataInitializer`](../security/AdminDataInitializer.java) if not already in the database:
+     - **Username:** `admin`
+     - **Email:** `admin@energy.ro`
+     - **Password:** `Admin123!`
+3. **Admin Session Token (`X-Admin-Token`):**
+   - Authenticating via `POST /api/v1/admin/login` issues a cryptographic session token (`token`) valid for 12 hours.
+   - **All** `/api/v1/admin/**` endpoints (except `/api/v1/admin/login`), including creating new administrators (`POST /api/v1/admin`), require the `X-Admin-Token: <token>` HTTP header (or `Bearer <token>`) and return `401 Unauthorized` if missing, invalid, or expired.
+   - Calling `POST /api/v1/admin/logout` with `X-Admin-Token` immediately invalidates the token.
+
+---
+
 ## Summary Table
 
 ### 1. User API (`/api/v1/users`)
@@ -13,21 +30,23 @@
 | :--- | :--- | :--- | :--- |
 | `GET` | `/api/v1/users` | Get all registered users | `200 OK` |
 | `GET` | `/api/v1/users/{id}` | Get a user and their houses by user ID | `200 OK` |
-| `POST` | `/api/v1/users` | Create a new user account | `201 Created` |
+| `POST` | `/api/v1/users` | Create a new user account (password is hashed) | `201 Created` |
+| `POST` | `/api/v1/users/login` | Authenticate user (`email`, `password`) | `200 OK` |
 | `PUT` | `/api/v1/users/{id}` | Update user details (supports partial updates) | `200 OK` |
 | `DELETE` | `/api/v1/users/{id}` | Delete a user and their associated houses | `204 No Content` |
 
 ### 2. Admin API (`/api/v1/admin`)
-| Method | Endpoint | Description | Success Code |
-| :--- | :--- | :--- | :--- |
-| `GET` | `/api/v1/admin` | Get all administrators | `200 OK` |
-| `GET` | `/api/v1/admin/{id}` | Get administrator by ID | `200 OK` |
-| `POST` | `/api/v1/admin` | Create a new administrator account | `201 Created` |
-| `POST` | `/api/v1/admin/login` | Authenticate administrator (`usernameOrEmail`, `password`) | `200 OK` |
-| `DELETE` | `/api/v1/admin/{id}` | Delete an administrator account | `204 No Content` |
-| `GET` | `/api/v1/admin/users` | **Admin action:** View all user accounts | `200 OK` |
-| `GET` | `/api/v1/admin/users/{userId}` | **Admin action:** View a specific user account by ID | `200 OK` |
-| `DELETE` | `/api/v1/admin/users/{userId}` | **Admin action:** Delete a user account and associated data | `204 No Content` |
+| Method | Endpoint | Auth Required | Description | Success Code |
+| :--- | :--- | :--- | :--- | :--- |
+| `POST` | `/api/v1/admin/login` | Public | Authenticate admin (`usernameOrEmail`, `password`) & issue token | `200 OK` |
+| `POST` | `/api/v1/admin/logout` | `X-Admin-Token` | Invalidate the current admin session token | `204 No Content` |
+| `POST` | `/api/v1/admin` | `X-Admin-Token` | Create a new administrator account (only by an existing admin) | `201 Created` |
+| `GET` | `/api/v1/admin` | `X-Admin-Token` | Get all administrators | `200 OK` |
+| `GET` | `/api/v1/admin/{id}` | `X-Admin-Token` | Get administrator by ID | `200 OK` |
+| `DELETE` | `/api/v1/admin/{id}` | `X-Admin-Token` | Delete an administrator account | `204 No Content` |
+| `GET` | `/api/v1/admin/users` | `X-Admin-Token` | **Admin action:** View all user accounts | `200 OK` |
+| `GET` | `/api/v1/admin/users/{userId}` | `X-Admin-Token` | **Admin action:** View a specific user account by ID | `200 OK` |
+| `DELETE` | `/api/v1/admin/users/{userId}` | `X-Admin-Token` | **Admin action:** Delete a user account and associated data | `204 No Content` |
 
 ### 3. House & Hardware API (`/api/v1/houses`)
 | Method | Endpoint | Description | Success Code |
@@ -62,19 +81,27 @@ Returns a single user by ID.
 - **Responses:** `200 OK`, `404 Not Found`
 
 ### `POST /api/v1/users`
-Creates a new user.
+Creates a new user with a hashed password.
 - **Request Body:**
 ```json
 {
   "name": "Ion Popescu",
   "email": "ion.popescu@energy.ro",
+  "password": "UserPass123!",
   "phone": "+40722123456"
 }
 ```
 - **Responses:** `201 Created`, `400 Bad Request` (invalid data or duplicate email)
 
+### `POST /api/v1/users/login`
+Authenticates a user by email and password against the stored PBKDF2 hash.
+- **Query Parameters:**
+  - `email` (`String`, required)
+  - `password` (`String`, required)
+- **Responses:** `200 OK` (returns the authenticated `User` object), `400 Bad Request`, `401 Unauthorized`
+
 ### `PUT /api/v1/users/{id}`
-Updates an existing user (supports partial updates — only non-null fields are modified).
+Updates an existing user (supports partial updates — only non-null fields are modified; if `password` is provided, it is re-hashed).
 - **Path Parameters:** `id` (`Long`, required)
 - **Request Body:**
 ```json
@@ -95,50 +122,75 @@ Deletes a user and cascades deletion to their houses, batteries, and solar panel
 ## 2. Admin API (`/api/v1/admin`)
 
 > **Note:** Administrators are separate from regular users. They do not own houses or energy hardware; their role is strictly to view and delete user accounts.
+> - **Default Admin Login:** `usernameOrEmail=admin` (or `admin@energy.ro`), `password=Admin123!`
+> - All other endpoints require the `X-Admin-Token` request header obtained from `POST /api/v1/admin/login`.
+
+### `POST /api/v1/admin/login`
+Authenticates an administrator by username or email and password, and generates an active session token.
+- **Query Parameters:**
+  - `usernameOrEmail` (`String`, required — e.g. `admin` or `admin@energy.ro`)
+  - `password` (`String`, required — e.g. `Admin123!`)
+- **Response (`200 OK`):**
+```json
+{
+  "token": "dGhpcyBpcyBhIHNlY3VyZSBhZG1pbiB0b2tlbg",
+  "expiresAt": "2026-11-29T06:00:00Z",
+  "admin": {
+    "id": 1,
+    "username": "admin",
+    "email": "admin@energy.ro"
+  }
+}
+```
+- **Responses:** `200 OK`, `400 Bad Request`, `401 Unauthorized`
+
+### `POST /api/v1/admin/logout`
+Invalidates the current administrator session token.
+- **Required Header:** `X-Admin-Token: <token>`
+- **Responses:** `204 No Content`, `401 Unauthorized`
 
 ### `POST /api/v1/admin`
-Creates a new administrator account. (`password` is `WRITE_ONLY` and is never returned in JSON responses).
+Creates a new administrator account (restricted to authenticated administrators).
+- **Required Header:** `X-Admin-Token: <token>`
 - **Request Body:**
 ```json
 {
-  "username": "admin_energy",
-  "email": "admin@energy.ro",
+  "username": "admin_secondary",
+  "email": "admin2@energy.ro",
   "password": "AdminPassword123!"
 }
 ```
 - **Response (`201 Created`):**
 ```json
 {
-  "id": 1,
-  "username": "admin_energy",
-  "email": "admin@energy.ro"
+  "id": 2,
+  "username": "admin_secondary",
+  "email": "admin2@energy.ro"
 }
 ```
-- **Responses:** `201 Created`, `400 Bad Request` (duplicate username or email)
-
-### `POST /api/v1/admin/login`
-Authenticates an administrator by username or email and password.
-- **Query Parameters:**
-  - `usernameOrEmail` (`String`, required)
-  - `password` (`String`, required)
-- **Responses:** `200 OK`, `400 Bad Request`, `401 Unauthorized`
+- **Responses:** `201 Created`, `400 Bad Request` (duplicate username or email), `401 Unauthorized`
 
 ### `GET /api/v1/admin` & `GET /api/v1/admin/{id}` & `DELETE /api/v1/admin/{id}`
 Lists all admins, retrieves an admin by ID, or deletes an admin account.
+- **Required Header:** `X-Admin-Token: <token>`
+- **Responses:** `200 OK` / `204 No Content`, `401 Unauthorized`, `404 Not Found`
 
 ### `GET /api/v1/admin/users`
 Retrieves all registered user accounts for administrative inspection.
-- **Responses:** `200 OK`
+- **Required Header:** `X-Admin-Token: <token>`
+- **Responses:** `200 OK`, `401 Unauthorized`
 
 ### `GET /api/v1/admin/users/{userId}`
 Retrieves a specific user account and its associated houses.
+- **Required Header:** `X-Admin-Token: <token>`
 - **Path Parameters:** `userId` (`Long`, required)
-- **Responses:** `200 OK`, `404 Not Found`
+- **Responses:** `200 OK`, `401 Unauthorized`, `404 Not Found`
 
 ### `DELETE /api/v1/admin/users/{userId}`
 Deletes a user account and all associated houses, batteries, and solar panels.
+- **Required Header:** `X-Admin-Token: <token>`
 - **Path Parameters:** `userId` (`Long`, required)
-- **Responses:** `204 No Content`, `404 Not Found`
+- **Responses:** `204 No Content`, `401 Unauthorized`, `404 Not Found`
 
 ---
 
