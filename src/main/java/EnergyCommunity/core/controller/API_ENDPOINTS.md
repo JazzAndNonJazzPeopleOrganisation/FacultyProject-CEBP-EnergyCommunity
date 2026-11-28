@@ -11,15 +11,13 @@
 1. **Password Hashing (`PBKDF2WithHmacSHA256`):**
    - Both `User` and `Admin` passwords are salted (128-bit `SecureRandom` salt) and hashed with `PBKDF2WithHmacSHA256` (65,536 iterations) via [`PasswordHasher`](../security/PasswordHasher.java) before being persisted.
    - Passwords are marked `@JsonProperty(access = WRITE_ONLY)` and are never returned in JSON responses.
-2. **Default Bootstrap Administrator (Seeded automatically on startup):**
-   - Configured in [`application.properties`](../../../../resources/application.properties) and created automatically by [`AdminDataInitializer`](../security/AdminDataInitializer.java) if not already in the database:
-     - **Username:** `admin`
-     - **Email:** `admin@energy.ro`
-     - **Password:** `Admin123!`
-3. **Admin Session Token (`X-Admin-Token`):**
+2. **Bootstrap Administrator via Local `.env` (Excluded from Git):**
+   - On startup, [`AdminDataInitializer`](../security/AdminDataInitializer.java) reads `ADMIN_DEFAULT_USERNAME`, `ADMIN_DEFAULT_EMAIL`, and `ADMIN_DEFAULT_PASSWORD` from the local `.env` file (imported via `spring.config.import=optional:file:.env[.properties]` in [`application.properties`](../../../../resources/application.properties) and ignored in `.gitignore`).
+3. **Automatic Request Interception (`AdminAuthInterceptor` & `X-Admin-Token`):**
    - Authenticating via `POST /api/v1/admin/login` issues a cryptographic session token (`token`) valid for 12 hours.
-   - **All** `/api/v1/admin/**` endpoints (except `/api/v1/admin/login`), including creating new administrators (`POST /api/v1/admin`), require the `X-Admin-Token: <token>` HTTP header (or `Bearer <token>`) and return `401 Unauthorized` if missing, invalid, or expired.
-   - Calling `POST /api/v1/admin/logout` with `X-Admin-Token` immediately invalidates the token.
+   - Spring MVC's [`AdminAuthInterceptor`](../security/AdminAuthInterceptor.java) (configured in [`WebMvcSecurityConfig`](../security/WebMvcSecurityConfig.java)) automatically intercepts **all** `/api/v1/admin/**` routes (except `/api/v1/admin/login`) and verifies the `X-Admin-Token` (or `Authorization: Bearer <token>`) HTTP header before the request reaches the controller.
+   - In Swagger UI (`/swagger-ui.html`), click the **"Authorize" 🔒** button at the top right and enter your `X-Admin-Token`.
+   - **Self-deletion prevention & session revocation:** An administrator cannot delete their own active account (`400 Bad Request`). When an administrator deletes another administrator account, all active sessions belonging to the deleted administrator are immediately revoked.
 
 ---
 
@@ -43,7 +41,7 @@
 | `POST` | `/api/v1/admin` | `X-Admin-Token` | Create a new administrator account (only by an existing admin) | `201 Created` |
 | `GET` | `/api/v1/admin` | `X-Admin-Token` | Get all administrators | `200 OK` |
 | `GET` | `/api/v1/admin/{id}` | `X-Admin-Token` | Get administrator by ID | `200 OK` |
-| `DELETE` | `/api/v1/admin/{id}` | `X-Admin-Token` | Delete an administrator account | `204 No Content` |
+| `DELETE` | `/api/v1/admin/{id}` | `X-Admin-Token` | Delete another administrator account & revoke their sessions | `204 No Content` |
 | `GET` | `/api/v1/admin/users` | `X-Admin-Token` | **Admin action:** View all user accounts | `200 OK` |
 | `GET` | `/api/v1/admin/users/{userId}` | `X-Admin-Token` | **Admin action:** View a specific user account by ID | `200 OK` |
 | `DELETE` | `/api/v1/admin/users/{userId}` | `X-Admin-Token` | **Admin action:** Delete a user account and associated data | `204 No Content` |
@@ -122,14 +120,14 @@ Deletes a user and cascades deletion to their houses, batteries, and solar panel
 ## 2. Admin API (`/api/v1/admin`)
 
 > **Note:** Administrators are separate from regular users. They do not own houses or energy hardware; their role is strictly to view and delete user accounts.
-> - **Default Admin Login:** `usernameOrEmail=admin` (or `admin@energy.ro`), `password=Admin123!`
-> - All other endpoints require the `X-Admin-Token` request header obtained from `POST /api/v1/admin/login`.
+> - Initial bootstrap administrator credentials are loaded from the local `.env` file (`ADMIN_DEFAULT_USERNAME`, `ADMIN_DEFAULT_EMAIL`, `ADMIN_DEFAULT_PASSWORD`).
+> - All endpoints except `/api/v1/admin/login` are automatically protected by [`AdminAuthInterceptor`](../security/AdminAuthInterceptor.java) and require the `X-Admin-Token` request header.
 
 ### `POST /api/v1/admin/login`
 Authenticates an administrator by username or email and password, and generates an active session token.
 - **Query Parameters:**
-  - `usernameOrEmail` (`String`, required — e.g. `admin` or `admin@energy.ro`)
-  - `password` (`String`, required — e.g. `Admin123!`)
+  - `usernameOrEmail` (`String`, required)
+  - `password` (`String`, required)
 - **Response (`200 OK`):**
 ```json
 {
@@ -170,10 +168,15 @@ Creates a new administrator account (restricted to authenticated administrators)
 ```
 - **Responses:** `201 Created`, `400 Bad Request` (duplicate username or email), `401 Unauthorized`
 
-### `GET /api/v1/admin` & `GET /api/v1/admin/{id}` & `DELETE /api/v1/admin/{id}`
-Lists all admins, retrieves an admin by ID, or deletes an admin account.
+### `GET /api/v1/admin` & `GET /api/v1/admin/{id}`
+Lists all admins or retrieves an admin by ID.
 - **Required Header:** `X-Admin-Token: <token>`
-- **Responses:** `200 OK` / `204 No Content`, `401 Unauthorized`, `404 Not Found`
+- **Responses:** `200 OK`, `401 Unauthorized`, `404 Not Found`
+
+### `DELETE /api/v1/admin/{id}`
+Deletes another administrator account and revokes all of their active session tokens. Self-deletion is blocked with `400 Bad Request`.
+- **Required Header:** `X-Admin-Token: <token>`
+- **Responses:** `204 No Content`, `400 Bad Request` (if attempting to delete own account), `401 Unauthorized`, `404 Not Found`
 
 ### `GET /api/v1/admin/users`
 Retrieves all registered user accounts for administrative inspection.

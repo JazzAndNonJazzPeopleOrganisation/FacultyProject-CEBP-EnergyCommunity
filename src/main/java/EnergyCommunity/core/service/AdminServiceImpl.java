@@ -85,14 +85,14 @@ public class AdminServiceImpl implements AdminService {
     }
 
     @Override
-    public void requireValidSession(String adminToken) {
-        adminSessionService.validateToken(adminToken);
-    }
-
-    @Override
-    public void deleteAdmin(Long id) {
+    public void deleteAdmin(Long id, Long currentAdminId) {
+        if (id != null && id.equals(currentAdminId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "An administrator cannot delete their own active account");
+        }
         Admin existing = findAdminById(id);
         adminRepository.delete(existing);
+        adminSessionService.invalidateSessionsForAdmin(id);
     }
 
     @Override

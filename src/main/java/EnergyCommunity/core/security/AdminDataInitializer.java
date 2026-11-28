@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Ensures a default bootstrap administrator account exists in the database on application startup.
+ * Seeds a default bootstrap administrator account on startup if credentials are provided in the local .env file.
  */
 @Component
 public class AdminDataInitializer implements CommandLineRunner {
@@ -24,9 +24,9 @@ public class AdminDataInitializer implements CommandLineRunner {
 
     public AdminDataInitializer(
             AdminRepository adminRepository,
-            @Value("${energy.admin.default.username:admin}") String defaultUsername,
-            @Value("${energy.admin.default.email:admin@energy.ro}") String defaultEmail,
-            @Value("${energy.admin.default.password:Admin123!}") String defaultPassword) {
+            @Value("${energy.admin.default.username:}") String defaultUsername,
+            @Value("${energy.admin.default.email:}") String defaultEmail,
+            @Value("${energy.admin.default.password:}") String defaultPassword) {
         this.adminRepository = adminRepository;
         this.defaultUsername = defaultUsername;
         this.defaultEmail = defaultEmail;
@@ -36,16 +36,20 @@ public class AdminDataInitializer implements CommandLineRunner {
     @Override
     @Transactional
     public void run(String... args) {
+        if (defaultUsername.isBlank() || defaultEmail.isBlank() || defaultPassword.isBlank()) {
+            log.info("No bootstrap admin credentials found in .env; skipping default admin initialization.");
+            return;
+        }
         if (!adminRepository.existsByUsername(defaultUsername) && !adminRepository.existsByEmail(defaultEmail)) {
             Admin bootstrapAdmin = new Admin(
                     null,
-                    defaultUsername,
-                    defaultEmail,
+                    defaultUsername.trim(),
+                    defaultEmail.trim(),
                     PasswordHasher.hash(defaultPassword)
             );
             adminRepository.save(bootstrapAdmin);
-            log.info("Default bootstrap administrator created (username='{}', email='{}')",
-                    defaultUsername, defaultEmail);
+            log.info("Default bootstrap administrator initialized from environment (username='{}')",
+                    defaultUsername);
         }
     }
 }

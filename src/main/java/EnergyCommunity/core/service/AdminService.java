@@ -12,8 +12,7 @@ public interface AdminService {
     Admin createAdmin(Admin admin);
     AdminAuthResponse authenticateAdmin(String usernameOrEmail, String password);
     void logoutAdmin(String adminToken);
-    void requireValidSession(String adminToken);
-    void deleteAdmin(Long id);
+    void deleteAdmin(Long id, Long currentAdminId);
 
     List<User> getAllUserAccounts();
     User getUserAccountById(Long userId);

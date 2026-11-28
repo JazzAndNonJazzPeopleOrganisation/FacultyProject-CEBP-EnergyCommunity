@@ -19,6 +19,10 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class AdminSessionService {
 
+    public static final String ADMIN_TOKEN_HEADER = "X-Admin-Token";
+    public static final String AUTHENTICATED_ADMIN_ID_ATTR = "authenticatedAdminId";
+    public static final String AUTHENTICATED_ADMIN_TOKEN_ATTR = "authenticatedAdminToken";
+
     private static final Duration SESSION_TTL = Duration.ofHours(12);
     private static final int TOKEN_BYTES = 32;
 
@@ -38,11 +42,14 @@ public class AdminSessionService {
         return new AdminAuthResponse(token, expiresAt, admin);
     }
 
-    public void validateToken(String rawToken) {
+    /**
+     * Validates the session token and returns the authenticated administrator's ID.
+     */
+    public Long validateAndGetAdminId(String rawToken) {
         String token = extractToken(rawToken);
         if (token == null) {
             throw new ResponseStatusException(
-                    HttpStatus.UNAUTHORIZED, "Missing admin session token in X-Admin-Token header");
+                    HttpStatus.UNAUTHORIZED, "Missing admin session token in " + ADMIN_TOKEN_HEADER + " header");
         }
         SessionEntry session = activeSessions.get(token);
         if (session == null) {
@@ -54,6 +61,7 @@ public class AdminSessionService {
             throw new ResponseStatusException(
                     HttpStatus.UNAUTHORIZED, "Admin session token has expired; please log in again");
         }
+        return session.adminId();
     }
 
     public void invalidateToken(String rawToken) {
@@ -64,7 +72,17 @@ public class AdminSessionService {
         }
     }
 
-    private String extractToken(String rawToken) {
+    /**
+     * Revokes all active session tokens belonging to the specified administrator ID.
+     */
+    public void invalidateSessionsForAdmin(Long adminId) {
+        if (adminId == null) {
+            return;
+        }
+        activeSessions.entrySet().removeIf(entry -> adminId.equals(entry.getValue().adminId()));
+    }
+
+    public String extractToken(String rawToken) {
         if (rawToken == null || rawToken.isBlank()) {
             return null;
         }
