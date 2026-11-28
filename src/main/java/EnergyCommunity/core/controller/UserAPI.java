@@ -33,7 +33,7 @@ public interface UserAPI {
             @Parameter(description = "ID of the user to retrieve", required = true)
             @PathVariable Long id);
 
-    @Operation(summary = "Create a new user", description = "Registers a new user into the core system")
+    @Operation(summary = "Create a new user", description = "Registers a new user into the core system with a hashed password")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "201", description = "User successfully created"),
             @ApiResponse(responseCode = "400", description = "Invalid input data or duplicate email")
@@ -41,7 +41,20 @@ public interface UserAPI {
     @PostMapping
     ResponseEntity<User> createUser(@Valid @RequestBody User user);
 
-    @Operation(summary = "Update an existing user", description = "Updates user details such as name, email, or phone")
+    @Operation(summary = "Authenticate user", description = "Authenticates a user using email and password")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Authentication successful"),
+            @ApiResponse(responseCode = "400", description = "Missing email or password"),
+            @ApiResponse(responseCode = "401", description = "Invalid email or password")
+    })
+    @PostMapping("/login")
+    ResponseEntity<User> loginUser(
+            @Parameter(description = "Email address of the user", required = true)
+            @RequestParam String email,
+            @Parameter(description = "Password of the user", required = true)
+            @RequestParam String password);
+
+    @Operation(summary = "Update an existing user", description = "Updates user details such as name, email, password, or phone")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "User successfully updated"),
             @ApiResponse(responseCode = "400", description = "Invalid input data"),

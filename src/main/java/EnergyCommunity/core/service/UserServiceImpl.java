@@ -3,6 +3,7 @@ package EnergyCommunity.core.service;
 import EnergyCommunity.core.model.House;
 import EnergyCommunity.core.model.User;
 import EnergyCommunity.core.repository.UserRepository;
+import EnergyCommunity.core.security.PasswordHasher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,6 +41,12 @@ public class UserServiceImpl implements UserService {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, "A user with email " + user.getEmail() + " already exists");
         }
+        if (user.getPassword() == null || user.getPassword().isBlank()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "User password is required");
+        }
+        user.setPassword(PasswordHasher.hash(user.getPassword()));
+
         if (user.getHouses() != null) {
             for (House house : user.getHouses()) {
                 house.setUser(user);
@@ -55,6 +62,22 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public User authenticateUser(String email, String password) {
+        if (email == null || email.isBlank() || password == null || password.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Email and password are required");
+        }
+        User user = userRepository.findByEmail(email.trim())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.UNAUTHORIZED, "Invalid user email or password"));
+
+        if (!PasswordHasher.verify(password, user.getPassword())) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid user email or password");
+        }
+        return user;
+    }
+
+    @Override
     public User updateUser(Long id, User updatedUser) {
         User existing = findUserById(id);
         if (updatedUser.getName() != null) {
@@ -67,6 +90,9 @@ public class UserServiceImpl implements UserService {
                         HttpStatus.BAD_REQUEST, "A user with email " + updatedUser.getEmail() + " already exists");
             }
             existing.setEmail(updatedUser.getEmail());
+        }
+        if (updatedUser.getPassword() != null && !updatedUser.getPassword().isBlank()) {
+            existing.setPassword(PasswordHasher.hash(updatedUser.getPassword()));
         }
         if (updatedUser.getPhone() != null) {
             existing.setPhone(updatedUser.getPhone());

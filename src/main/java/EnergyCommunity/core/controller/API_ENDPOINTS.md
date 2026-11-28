@@ -1,0 +1,345 @@
+# Core Energy Service — REST API Endpoints Documentation
+
+**Base URL:** `http://localhost:8080`  
+**Swagger UI (Interactive Docs):** `http://localhost:8080/swagger-ui.html`  
+**OpenAPI JSON Spec:** `http://localhost:8080/v3/api-docs`
+
+---
+
+## Security & Authentication Overview
+
+1. **Password Hashing (`PBKDF2WithHmacSHA256`):**
+   - Both `User` and `Admin` passwords are salted (128-bit `SecureRandom` salt) and hashed with `PBKDF2WithHmacSHA256` (65,536 iterations) via [`PasswordHasher`](../security/PasswordHasher.java) before being persisted.
+   - Passwords are marked `@JsonProperty(access = WRITE_ONLY)` and are never returned in JSON responses.
+2. **Bootstrap Administrator via Local `.env` (Excluded from Git):**
+   - On startup, [`AdminDataInitializer`](../security/AdminDataInitializer.java) reads `ADMIN_DEFAULT_USERNAME`, `ADMIN_DEFAULT_EMAIL`, and `ADMIN_DEFAULT_PASSWORD` from the local `.env` file (imported via `spring.config.import=optional:file:.env[.properties]` in [`application.properties`](../../../../resources/application.properties) and ignored in `.gitignore`).
+3. **Automatic Request Interception (`AdminAuthInterceptor` & `X-Admin-Token`):**
+   - Authenticating via `POST /api/v1/admin/login` issues a cryptographic session token (`token`) valid for 12 hours.
+   - Spring MVC's [`AdminAuthInterceptor`](../security/AdminAuthInterceptor.java) (configured in [`WebMvcSecurityConfig`](../security/WebMvcSecurityConfig.java)) automatically intercepts **all** `/api/v1/admin/**` routes (except `/api/v1/admin/login`) and verifies the `X-Admin-Token` (or `Authorization: Bearer <token>`) HTTP header before the request reaches the controller.
+   - In Swagger UI (`/swagger-ui.html`), click the **"Authorize" 🔒** button at the top right and enter your `X-Admin-Token`.
+   - **Self-deletion prevention & session revocation:** An administrator cannot delete their own active account (`400 Bad Request`). When an administrator deletes another administrator account, all active sessions belonging to the deleted administrator are immediately revoked.
+
+---
+
+## Summary Table
+
+### 1. User API (`/api/v1/users`)
+| Method | Endpoint | Description | Success Code |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/v1/users` | Get all registered users | `200 OK` |
+| `GET` | `/api/v1/users/{id}` | Get a user and their houses by user ID | `200 OK` |
+| `POST` | `/api/v1/users` | Create a new user account (password is hashed) | `201 Created` |
+| `POST` | `/api/v1/users/login` | Authenticate user (`email`, `password`) | `200 OK` |
+| `PUT` | `/api/v1/users/{id}` | Update user details (supports partial updates) | `200 OK` |
+| `DELETE` | `/api/v1/users/{id}` | Delete a user and their associated houses | `204 No Content` |
+
+### 2. Admin API (`/api/v1/admin`)
+| Method | Endpoint | Auth Required | Description | Success Code |
+| :--- | :--- | :--- | :--- | :--- |
+| `POST` | `/api/v1/admin/login` | Public | Authenticate admin (`usernameOrEmail`, `password`) & issue token | `200 OK` |
+| `POST` | `/api/v1/admin/logout` | `X-Admin-Token` | Invalidate the current admin session token | `204 No Content` |
+| `POST` | `/api/v1/admin` | `X-Admin-Token` | Create a new administrator account (only by an existing admin) | `201 Created` |
+| `GET` | `/api/v1/admin` | `X-Admin-Token` | Get all administrators | `200 OK` |
+| `GET` | `/api/v1/admin/{id}` | `X-Admin-Token` | Get administrator by ID | `200 OK` |
+| `DELETE` | `/api/v1/admin/{id}` | `X-Admin-Token` | Delete another administrator account & revoke their sessions | `204 No Content` |
+| `GET` | `/api/v1/admin/users` | `X-Admin-Token` | **Admin action:** View all user accounts | `200 OK` |
+| `GET` | `/api/v1/admin/users/{userId}` | `X-Admin-Token` | **Admin action:** View a specific user account by ID | `200 OK` |
+| `DELETE` | `/api/v1/admin/users/{userId}` | `X-Admin-Token` | **Admin action:** Delete a user account and associated data | `204 No Content` |
+
+### 3. House & Hardware API (`/api/v1/houses`)
+| Method | Endpoint | Description | Success Code |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/v1/houses` | Get all houses with batteries and solar panels | `200 OK` |
+| `GET` | `/api/v1/houses/{id}` | Get a specific house by ID | `200 OK` |
+| `GET` | `/api/v1/houses/user/{userId}` | Get all houses owned by a specific user | `200 OK` |
+| `POST` | `/api/v1/houses` | Create a new house | `201 Created` |
+| `POST` | `/api/v1/houses/user/{userId}` | Create a new house assigned to a specific user | `201 Created` |
+| `PUT` | `/api/v1/houses/{id}` | Update house details (supports partial updates) | `200 OK` |
+| `DELETE` | `/api/v1/houses/{id}` | Delete a house and its hardware | `204 No Content` |
+| `GET` | `/api/v1/houses/{houseId}/batteries` | Get all batteries installed in a house | `200 OK` |
+| `POST` | `/api/v1/houses/{houseId}/batteries` | Add a battery unit to a house | `201 Created` |
+| `PUT` | `/api/v1/houses/batteries/{batteryId}` | Update battery parameters (supports partial updates) | `200 OK` |
+| `DELETE` | `/api/v1/houses/batteries/{batteryId}` | Delete a battery unit | `204 No Content` |
+| `GET` | `/api/v1/houses/{houseId}/solar-panels` | Get all solar panels installed in a house | `200 OK` |
+| `POST` | `/api/v1/houses/{houseId}/solar-panels` | Add a solar panel array to a house | `201 Created` |
+| `PUT` | `/api/v1/houses/solar-panels/{panelId}` | Update solar panel parameters (supports partial updates) | `200 OK` |
+| `DELETE` | `/api/v1/houses/solar-panels/{panelId}` | Delete a solar panel unit | `204 No Content` |
+
+---
+
+## 1. User API (`/api/v1/users`)
+
+### `GET /api/v1/users`
+Returns a list of all registered users and their houses.
+- **Responses:** `200 OK`
+
+### `GET /api/v1/users/{id}`
+Returns a single user by ID.
+- **Path Parameters:** `id` (`Long`, required)
+- **Responses:** `200 OK`, `404 Not Found`
+
+### `POST /api/v1/users`
+Creates a new user with a hashed password.
+- **Request Body:**
+```json
+{
+  "name": "Ion Popescu",
+  "email": "ion.popescu@energy.ro",
+  "password": "UserPass123!",
+  "phone": "+40722123456"
+}
+```
+- **Responses:** `201 Created`, `400 Bad Request` (invalid data or duplicate email)
+
+### `POST /api/v1/users/login`
+Authenticates a user by email and password against the stored PBKDF2 hash.
+- **Query Parameters:**
+  - `email` (`String`, required)
+  - `password` (`String`, required)
+- **Responses:** `200 OK` (returns the authenticated `User` object), `400 Bad Request`, `401 Unauthorized`
+
+### `PUT /api/v1/users/{id}`
+Updates an existing user (supports partial updates — only non-null fields are modified; if `password` is provided, it is re-hashed).
+- **Path Parameters:** `id` (`Long`, required)
+- **Request Body:**
+```json
+{
+  "name": "Ion Popescu Updated",
+  "phone": "+40744000111"
+}
+```
+- **Responses:** `200 OK`, `400 Bad Request`, `404 Not Found`
+
+### `DELETE /api/v1/users/{id}`
+Deletes a user and cascades deletion to their houses, batteries, and solar panels.
+- **Path Parameters:** `id` (`Long`, required)
+- **Responses:** `204 No Content`, `404 Not Found`
+
+---
+
+## 2. Admin API (`/api/v1/admin`)
+
+> **Note:** Administrators are separate from regular users. They do not own houses or energy hardware; their role is strictly to view and delete user accounts.
+> - Initial bootstrap administrator credentials are loaded from the local `.env` file (`ADMIN_DEFAULT_USERNAME`, `ADMIN_DEFAULT_EMAIL`, `ADMIN_DEFAULT_PASSWORD`).
+> - All endpoints except `/api/v1/admin/login` are automatically protected by [`AdminAuthInterceptor`](../security/AdminAuthInterceptor.java) and require the `X-Admin-Token` request header.
+
+### `POST /api/v1/admin/login`
+Authenticates an administrator by username or email and password, and generates an active session token.
+- **Query Parameters:**
+  - `usernameOrEmail` (`String`, required)
+  - `password` (`String`, required)
+- **Response (`200 OK`):**
+```json
+{
+  "token": "dGhpcyBpcyBhIHNlY3VyZSBhZG1pbiB0b2tlbg",
+  "expiresAt": "2026-11-29T06:00:00Z",
+  "admin": {
+    "id": 1,
+    "username": "admin",
+    "email": "admin@energy.ro"
+  }
+}
+```
+- **Responses:** `200 OK`, `400 Bad Request`, `401 Unauthorized`
+
+### `POST /api/v1/admin/logout`
+Invalidates the current administrator session token.
+- **Required Header:** `X-Admin-Token: <token>`
+- **Responses:** `204 No Content`, `401 Unauthorized`
+
+### `POST /api/v1/admin`
+Creates a new administrator account (restricted to authenticated administrators).
+- **Required Header:** `X-Admin-Token: <token>`
+- **Request Body:**
+```json
+{
+  "username": "admin_secondary",
+  "email": "admin2@energy.ro",
+  "password": "AdminPassword123!"
+}
+```
+- **Response (`201 Created`):**
+```json
+{
+  "id": 2,
+  "username": "admin_secondary",
+  "email": "admin2@energy.ro"
+}
+```
+- **Responses:** `201 Created`, `400 Bad Request` (duplicate username or email), `401 Unauthorized`
+
+### `GET /api/v1/admin` & `GET /api/v1/admin/{id}`
+Lists all admins or retrieves an admin by ID.
+- **Required Header:** `X-Admin-Token: <token>`
+- **Responses:** `200 OK`, `401 Unauthorized`, `404 Not Found`
+
+### `DELETE /api/v1/admin/{id}`
+Deletes another administrator account and revokes all of their active session tokens. Self-deletion is blocked with `400 Bad Request`.
+- **Required Header:** `X-Admin-Token: <token>`
+- **Responses:** `204 No Content`, `400 Bad Request` (if attempting to delete own account), `401 Unauthorized`, `404 Not Found`
+
+### `GET /api/v1/admin/users`
+Retrieves all registered user accounts for administrative inspection.
+- **Required Header:** `X-Admin-Token: <token>`
+- **Responses:** `200 OK`, `401 Unauthorized`
+
+### `GET /api/v1/admin/users/{userId}`
+Retrieves a specific user account and its associated houses.
+- **Required Header:** `X-Admin-Token: <token>`
+- **Path Parameters:** `userId` (`Long`, required)
+- **Responses:** `200 OK`, `401 Unauthorized`, `404 Not Found`
+
+### `DELETE /api/v1/admin/users/{userId}`
+Deletes a user account and all associated houses, batteries, and solar panels.
+- **Required Header:** `X-Admin-Token: <token>`
+- **Path Parameters:** `userId` (`Long`, required)
+- **Responses:** `204 No Content`, `401 Unauthorized`, `404 Not Found`
+
+---
+
+## 3. House & Hardware API (`/api/v1/houses`)
+
+### `GET /api/v1/houses`
+Retrieves all houses along with their owner, batteries, and solar panels.
+- **Responses:** `200 OK`
+
+### `GET /api/v1/houses/{id}`
+Retrieves a single house by ID.
+- **Path Parameters:** `id` (`Long`, required)
+- **Responses:** `200 OK`, `404 Not Found`
+
+### `GET /api/v1/houses/user/{userId}`
+Retrieves all houses owned by the specified user.
+- **Path Parameters:** `userId` (`Long`, required)
+- **Responses:** `200 OK`, `404 Not Found`
+
+### `POST /api/v1/houses/user/{userId}` (or `POST /api/v1/houses`)
+Creates a new house (with optional initial batteries and solar panels) and assigns it to `userId`.
+- **Path Parameters:** `userId` (`Long`, required for `/user/{userId}`)
+- **Request Body:**
+```json
+{
+  "name": "Casa Timisoara Nord",
+  "address": "Str. Vasile Parvan nr. 2, Timisoara",
+  "latitude": 45.7489,
+  "longitude": 21.2087,
+  "currentConsumptionKw": 1.8,
+  "batteries": [
+    {
+      "model": "Tesla Powerwall 3",
+      "capacityKwh": 13.5,
+      "currentChargePercentage": 75.0,
+      "maxPowerKw": 5.0,
+      "status": "IDLE"
+    }
+  ],
+  "solarPanels": [
+    {
+      "model": "SunPower Maxeon 6",
+      "maxCapacityKw": 6.5,
+      "efficiency": 22.8,
+      "orientation": "SOUTH"
+    }
+  ]
+}
+```
+- **Responses:** `201 Created`, `400 Bad Request`, `404 Not Found`
+
+### `PUT /api/v1/houses/{id}`
+Updates house details (supports partial updates).
+- **Path Parameters:** `id` (`Long`, required)
+- **Request Body:**
+```json
+{
+  "name": "Casa Timisoara Sud",
+  "currentConsumptionKw": 2.4
+}
+```
+- **Responses:** `200 OK`, `404 Not Found`
+
+### `DELETE /api/v1/houses/{id}`
+Deletes a house and all its batteries and solar panels.
+- **Path Parameters:** `id` (`Long`, required)
+- **Responses:** `204 No Content`, `404 Not Found`
+
+---
+
+## 4. Battery Endpoints (`/api/v1/houses/.../batteries`)
+
+### Allowed `BatteryStatus` Enum Values:
+- `IDLE`
+- `CHARGING`
+- `DISCHARGING`
+- `HOLD_FOR_EV`
+
+### `GET /api/v1/houses/{houseId}/batteries`
+Returns all batteries installed in the given house.
+- **Responses:** `200 OK`, `404 Not Found`
+
+### `POST /api/v1/houses/{houseId}/batteries`
+Adds a new battery to a house.
+- **Request Body:**
+```json
+{
+  "model": "Tesla Powerwall 3",
+  "capacityKwh": 13.5,
+  "currentChargePercentage": 80.0,
+  "maxPowerKw": 5.0,
+  "status": "IDLE"
+}
+```
+- **Responses:** `201 Created`, `400 Bad Request`, `404 Not Found`
+
+### `PUT /api/v1/houses/batteries/{batteryId}`
+Updates a battery (supports partial updates, e.g., changing only `status` or `currentChargePercentage`).
+- **Request Body:**
+```json
+{
+  "currentChargePercentage": 65.0,
+  "status": "HOLD_FOR_EV"
+}
+```
+- **Responses:** `200 OK`, `404 Not Found`
+
+### `DELETE /api/v1/houses/batteries/{batteryId}`
+Deletes a battery unit.
+- **Responses:** `204 No Content`, `404 Not Found`
+
+---
+
+## 5. Solar Panel Endpoints (`/api/v1/houses/.../solar-panels`)
+
+### Allowed `PanelOrientation` Enum Values:
+- `NORTH`, `NORTH_EAST`, `EAST`, `SOUTH_EAST`, `SOUTH`, `SOUTH_WEST`, `WEST`, `NORTH_WEST`
+
+### `GET /api/v1/houses/{houseId}/solar-panels`
+Returns all solar panels installed in the given house.
+- **Responses:** `200 OK`, `404 Not Found`
+
+### `POST /api/v1/houses/{houseId}/solar-panels`
+Adds a new solar panel array to a house.
+- **Request Body:**
+```json
+{
+  "model": "SunPower Maxeon 6",
+  "maxCapacityKw": 6.5,
+  "efficiency": 22.8,
+  "orientation": "SOUTH"
+}
+```
+- **Responses:** `201 Created`, `400 Bad Request`, `404 Not Found`
+
+### `PUT /api/v1/houses/solar-panels/{panelId}`
+Updates a solar panel unit (supports partial updates).
+- **Request Body:**
+```json
+{
+  "maxCapacityKw": 8.0,
+  "orientation": "SOUTH_WEST"
+}
+```
+- **Responses:** `200 OK`, `404 Not Found`
+
+### `DELETE /api/v1/houses/solar-panels/{panelId}`
+Deletes a solar panel unit.
+- **Responses:** `204 No Content`, `404 Not Found`

@@ -1,6 +1,7 @@
 package EnergyCommunity.core.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Email;
@@ -31,6 +32,12 @@ public class User {
     @Schema(description = "Email address of the user", example = "ion.popescu@energy.ro")
     private String email;
 
+    @NotBlank(message = "Password is required")
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+    @Column(nullable = false)
+    @Schema(description = "Password for the user account (stored hashed)", example = "UserPass123!", accessMode = Schema.AccessMode.WRITE_ONLY)
+    private String password;
+
     @Column
     @Schema(description = "Phone number of the user", example = "+40722123456")
     private String phone;
@@ -47,6 +54,14 @@ public class User {
         this.id = id;
         this.name = name;
         this.email = email;
+        this.phone = phone;
+    }
+
+    public User(Long id, String name, String email, String password, String phone) {
+        this.id = id;
+        this.name = name;
+        this.email = email;
+        this.password = password;
         this.phone = phone;
     }
 
@@ -92,6 +107,14 @@ public class User {
 
     public void setEmail(String email) {
         this.email = email;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
     }
 
     public String getPhone() {
